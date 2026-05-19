@@ -1,0 +1,15 @@
+:root {
+  --bg: #050b18;
+  --bg-soft: #0d1830;
+  --panel: rgba(10, 20, 38, 0.78);
+  --panel-strong: rgba(8, 15, 29, 0.94);
+  --line: rgba(117, 146, 196, 0.16);
+  --text: #f5f8ff;
+  --muted: #9badcf;
+  --glow: #52c7ff;
+  --glow-strong: #7ce6ff;
+  --violet: #8476ff;
+  --coral: #ff835c;
+  --solar: #ffd16a;
+  --emerald: #46d39a;
+}

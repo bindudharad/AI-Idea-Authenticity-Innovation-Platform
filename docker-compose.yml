@@ -1,0 +1,68 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: idea-platform-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: idea_platform
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d idea_platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: idea-platform-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      APP_NAME: AI Idea Authenticity & Innovation Platform API
+      APP_ENV: development
+      DEBUG: "true"
+      API_PREFIX: /api
+      FRONTEND_URL: http://localhost:3000
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/idea_platform
+      JWT_SECRET_KEY: change-this-secret-in-production
+      JWT_ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: "1440"
+      EMBEDDING_MODEL_NAME: sentence-transformers/all-MiniLM-L6-v2
+      FAISS_INDEX_PATH: /app/backend/storage/faiss/idea_index.faiss
+      FAISS_METADATA_PATH: /app/backend/storage/faiss/idea_index_meta.json
+      CERTIFICATE_OUTPUT_DIR: /app/backend/storage/certificates
+      DATASET_PATH: /app/backend/dataset/ideas.json
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend_certificates:/app/backend/storage/certificates
+      - backend_faiss:/app/backend/storage/faiss
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    container_name: idea-platform-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NODE_ENV: development
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:
+  backend_certificates:
+  backend_faiss:

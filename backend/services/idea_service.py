@@ -120,9 +120,22 @@ class IdeaService:
 
     def _reference_records(self) -> list[dict]:
         """Load both curated reference ideas and public registered ideas into a shared comparison format."""
-        db = self._db()
-        references = db.query(models.ReferenceIdea).all()
-        public_ideas = db.query(models.Idea).filter(models.Idea.is_public.is_(True)).all()
+        if self.db is None:
+            dataset_path = Path(settings.dataset_path)
+            if dataset_path.exists():
+                return json.loads(dataset_path.read_text(encoding="utf-8"))
+            return []
+
+        references = self.db.query(models.ReferenceIdea).all()
+        if not references:
+            dataset_path = Path(settings.dataset_path)
+            if dataset_path.exists():
+                try:
+                    return json.loads(dataset_path.read_text(encoding="utf-8"))
+                except Exception:
+                    pass
+
+        public_ideas = self.db.query(models.Idea).filter(models.Idea.is_public.is_(True)).all()
 
         combined = [
             {
@@ -156,12 +169,22 @@ class IdeaService:
             mode=similarity_mode,
         )
         top_similarity = matches[0].similarity_score if matches else 0.0
-        innovation_score = self.innovation_service.calculate_innovation_score(top_similarity)
+        preliminary_startup = self.startup_service.analyze(payload.idea_text, max(10.0, 100.0 - top_similarity))
+        innovation_score = self.innovation_service.calculate_innovation_score(
+            top_similarity,
+            idea_profile=idea_profile,
+            startup_analysis=preliminary_startup,
+        )
         warning = "Similar project already exists." if top_similarity > 70 else "Idea appears sufficiently differentiated."
         serialized_matches = [match.__dict__ for match in matches]
         resource_scan = self.resource_scanner_service.scan(idea_profile, serialized_matches, similarity_mode)
         suggestions = self.suggestion_service.generate(payload.idea_text, idea_profile)
-        judging = self.judging_service.score(payload.idea_text, innovation_score)
+        judging = self.judging_service.score(
+            payload.idea_text,
+            innovation_score,
+            idea_profile=idea_profile,
+            startup_analysis=preliminary_startup,
+        )
         startup = self.startup_service.analyze(payload.idea_text, innovation_score)
         business = self._business_analysis(payload.idea_text, idea_profile, startup, top_similarity, innovation_score)
         innovation_breakdown = self.innovation_service.score_breakdown(top_similarity, idea_profile, startup)
@@ -291,22 +314,30 @@ class IdeaService:
             AnalysisRequest(idea_name=payload.idea_name, idea_text=payload.description, mode=idea_type, idea_type=idea_type),
             current_user,
         )
+        parsed_team_id = (
+            int(payload.team_id)
+            if payload.team_id is not None and str(payload.team_id).isdigit()
+            else None
+        )
         idea = models.Idea(
             title=payload.idea_name,
             description=payload.description,
             mode=idea_type,
             owner_id=current_user.id,
+            team_id=parsed_team_id,
             is_public=payload.is_public,
             innovation_score=analysis.innovation_score,
             latest_similarity_score=analysis.similarity_score,
+            result=analysis.model_dump(mode="json"),
             created_at=utcnow(),
         )
         db.add(idea)
         db.flush()
 
         OwnershipService(db).create_version(idea, payload.description, analysis.innovation_score)
-        team = TeamService(db).ensure_team(idea)
-        db.add(models.TeamMember(team_id=team.id, user_id=current_user.id, role="Owner"))
+        if not parsed_team_id:
+            team = TeamService(db).ensure_team(idea)
+            db.add(models.TeamMember(team_id=team.id, user_id=current_user.id, role="Owner"))
         db.commit()
         db.refresh(idea)
         return idea
@@ -341,8 +372,8 @@ class IdeaService:
         )
 
     def get_idea(self, idea_id: int, current_user: models.User) -> models.Idea:
-        """Return one owned idea for detail and version views."""
-        return self._owned_idea(idea_id, current_user.id)
+        """Return one owned or public idea for detail and version views."""
+        return self._accessible_idea(idea_id, current_user.id)
 
     def analyze_saved_idea(self, idea_id: int, current_user: models.User) -> AnalysisResponse:
         """Re-run the canonical backend analysis for a saved idea so module pages share one source of truth."""
@@ -406,6 +437,8 @@ class IdeaService:
             innovation_score=idea.innovation_score,
             similarity_score=idea.latest_similarity_score,
             timestamp_text=idea.updated_at.strftime("%Y-%m-%d %H:%M UTC"),
+            idea_id=idea.id,
+            owner_id=current_user.id,
         )
         existing = db.query(models.Certificate).filter(models.Certificate.idea_id == idea.id).first()
         if existing:

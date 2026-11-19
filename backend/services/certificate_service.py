@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 
 from reportlab.lib import colors
@@ -12,8 +13,8 @@ from config import settings
 class CertificateService:
     """Produces PDF proof-of-ownership certificates for stored ideas."""
 
-    def __init__(self) -> None:
-        self.output_dir = Path(settings.certificate_output_dir)
+    def __init__(self, output_dir: str | Path | None = None) -> None:
+        self.output_dir = Path(output_dir or settings.certificate_output_dir).resolve()
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def generate(
@@ -25,10 +26,19 @@ class CertificateService:
         innovation_score: float,
         similarity_score: float | None = None,
         timestamp_text: str | None = None,
+        idea_id: int | None = None,
+        owner_id: int | None = None,
     ) -> Path:
         """Render a polished certificate PDF and return the generated file path."""
         safe_name = "".join(character if character.isalnum() else "_" for character in idea_name.lower()).strip("_")
-        path = self.output_dir / f"{safe_name or 'idea'}_certificate.pdf"
+        entropy_token = f"{idea_id}:{owner_id}:{idea_name}:{timestamp_text or date_text}"
+        suffix = hashlib.sha256(entropy_token.encode("utf-8")).hexdigest()[:8]
+        filename = f"cert_idea_{idea_id or 'anon'}_{safe_name[:20]}_{suffix}.pdf"
+        path = (self.output_dir / filename).resolve()
+
+        # Path traversal guard
+        if not str(path).startswith(str(self.output_dir)):
+            raise ValueError("Path traversal violation in certificate generation")
 
         document = SimpleDocTemplate(
             str(path),

@@ -10,6 +10,7 @@ from routes.analytics_routes import router as analytics_router
 from routes.auth_routes import router as auth_router
 from routes.help_routes import router as help_router
 from routes.idea_routes import router as idea_router
+from routes.team_routes import router as team_router
 from services.idea_service import IdeaService
 from utils.logger import configure_logging, get_logger
 
@@ -49,14 +50,15 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.get_cors_origins(),
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
 )
 
 app.include_router(auth_router, prefix=settings.api_prefix)
 app.include_router(idea_router, prefix=settings.api_prefix)
+app.include_router(team_router, prefix=settings.api_prefix)
 app.include_router(analytics_router, prefix=settings.api_prefix)
 app.include_router(help_router, prefix=settings.api_prefix)
 

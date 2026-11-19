@@ -168,6 +168,7 @@ def generate_suggestions(
 
 
 @router.post("/register-idea", response_model=IdeaResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/ideas", response_model=IdeaResponse, status_code=status.HTTP_201_CREATED)
 def register_idea(
     payload: IdeaRegistrationRequest,
     db: Session = Depends(get_db),
@@ -269,7 +270,7 @@ def add_team_note(
 from database.models import AnalysisResult
 from datetime import datetime
 from typing import List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 class AnalysisResultCreate(BaseModel):
     idea_id: int
@@ -283,6 +284,8 @@ class AnalysisResultCreate(BaseModel):
     innovation_highlights: Optional[List[str]] = []
 
 class AnalysisResultResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     idea_id: int
     innovation_score: float
@@ -295,9 +298,6 @@ class AnalysisResultResponse(BaseModel):
     innovation_highlights: List[str]
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 @router.post("/analysis-results", response_model=AnalysisResultResponse, status_code=status.HTTP_201_CREATED)
 def create_analysis_result(
@@ -305,7 +305,8 @@ def create_analysis_result(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    """Store AI analysis results for an idea."""
+    """Store AI analysis results for an idea with strict ownership validation."""
+    IdeaService(db)._owned_idea(payload.idea_id, current_user.id)
     analysis_result = AnalysisResult(
         idea_id=payload.idea_id,
         innovation_score=payload.innovation_score,
@@ -329,7 +330,8 @@ def get_analysis_results(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    """Retrieve all AI analysis results for a specific idea."""
+    """Retrieve all AI analysis results for a specific idea with access authorization."""
+    IdeaService(db)._accessible_idea(idea_id, current_user.id)
     results = db.query(AnalysisResult).filter(AnalysisResult.idea_id == idea_id).order_by(AnalysisResult.created_at.desc()).all()
     return results
 
@@ -340,7 +342,8 @@ def get_latest_analysis(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    """Get the most recent AI analysis result for an idea."""
+    """Get the most recent AI analysis result for an idea with access authorization."""
+    IdeaService(db)._accessible_idea(idea_id, current_user.id)
     result = db.query(AnalysisResult).filter(AnalysisResult.idea_id == idea_id).order_by(AnalysisResult.created_at.desc()).first()
     return result
 

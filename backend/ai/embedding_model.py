@@ -1,10 +1,13 @@
-import hashlib
+import os
+
+# Ensure PyTorch is preferred over TensorFlow to prevent Keras 3 compatibility conflicts
+os.environ.setdefault("USE_TF", "0")
+os.environ.setdefault("USE_TORCH", "1")
 
 import numpy as np
 
 from config import settings
 from utils.logger import get_logger
-
 
 logger = get_logger(__name__)
 
@@ -34,30 +37,27 @@ class EmbeddingModel:
             self.__class__._shared_dimension = model.get_sentence_embedding_dimension()
             self._model = model
             self.dimension = self._shared_dimension
-            logger.info("Loaded transformer model %s", settings.embedding_model_name)
-        except Exception as exc:  # pragma: no cover - fallback depends on runtime environment
-            logger.warning("Using hash-based embedding fallback: %s", exc)
+            logger.info("Successfully loaded transformer model %s (dim=%d)", settings.embedding_model_name, self.dimension)
+        except Exception as exc:
+            logger.error("Failed to load transformer model %s: %s", settings.embedding_model_name, exc, exc_info=True)
+            self._model = None
+            raise RuntimeError(
+                f"Embedding model '{settings.embedding_model_name}' could not be loaded: {exc}"
+            ) from exc
 
     def encode(self, text: str) -> np.ndarray:
         """Return a single normalized vector for cosine-similarity search."""
-        if self._model is not None:
-            vector = self._model.encode(text, normalize_embeddings=True)
-            return np.asarray(vector, dtype="float32")
-
-        # The fallback keeps the app runnable even before the model download completes.
-        digest = hashlib.sha256(text.encode("utf-8")).digest()
-        raw = np.frombuffer(digest * (self.dimension // len(digest) + 1), dtype=np.uint8)[: self.dimension]
-        vector = raw.astype("float32")
-        norm = np.linalg.norm(vector) or 1.0
-        return vector / norm
+        if self._model is None:
+            raise RuntimeError("Embedding model is not initialized.")
+        vector = self._model.encode(text, normalize_embeddings=True)
+        return np.asarray(vector, dtype="float32")
 
     def encode_batch(self, texts: list[str]) -> np.ndarray:
         """Embed many texts at once and return a normalized matrix."""
         if not texts:
             return np.empty((0, self.dimension), dtype="float32")
 
-        if self._model is not None:
-            vectors = self._model.encode(texts, normalize_embeddings=True)
-            return np.asarray(vectors, dtype="float32")
-
-        return np.asarray([self.encode(text) for text in texts], dtype="float32")
+        if self._model is None:
+            raise RuntimeError("Embedding model is not initialized.")
+        vectors = self._model.encode(texts, normalize_embeddings=True)
+        return np.asarray(vectors, dtype="float32")

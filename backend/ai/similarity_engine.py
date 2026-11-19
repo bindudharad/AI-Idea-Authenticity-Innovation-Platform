@@ -133,6 +133,60 @@ class SimilarityEngine:
             return [(int(index), float(scores[index, 0])) for index in ranked]
         return []
 
+    def ensure_indexed(self, records: list[dict], embedding_model) -> None:
+        """Ensure the FAISS vector index contains the provided reference records."""
+        if not records:
+            return
+        # If already indexed with the same or greater quantity, skip re-indexing
+        if self.metadata and len(self.metadata) >= len(records):
+            if (self._faiss is not None and self.index is not None) or (isinstance(self.index, np.ndarray) and len(self.index)):
+                return
+
+        logger.info("Building persistent FAISS vector index for %d records...", len(records))
+        texts = [f"{item['title']}. {item['description']}" for item in records]
+        vectors = embedding_model.encode_batch(texts)
+        self.store_vectors(vectors, records)
+        logger.info("FAISS vector index built and saved successfully (%d records).", len(records))
+
+    def search_with_filter(
+        self,
+        query_vector: np.ndarray,
+        top_k: int = 5,
+        mode: str | None = None,
+    ) -> list[tuple[dict, float]]:
+        """Search the persistent vector index and optionally filter by platform mode."""
+        if not self.metadata:
+            return []
+
+        # Retrieve a wider pool to allow post-filtering by mode
+        pool_size = min(len(self.metadata), max(top_k * 5, 25))
+        matches = self.search_index(query_vector, top_k=pool_size)
+
+        filtered: list[tuple[dict, float]] = []
+        for idx, score in matches:
+            if idx < 0 or idx >= len(self.metadata):
+                continue
+            record = dict(self.metadata[idx])
+            if mode and record.get("mode") and record.get("mode") != mode:
+                continue
+            filtered.append((record, score))
+            if len(filtered) >= top_k:
+                break
+
+        # If strict mode filtering yielded too few results, backfill with top unfiltered
+        if len(filtered) < top_k:
+            existing_titles = {r["title"] for r, _ in filtered}
+            for idx, score in matches:
+                if idx < 0 or idx >= len(self.metadata):
+                    continue
+                record = dict(self.metadata[idx])
+                if record["title"] not in existing_titles:
+                    filtered.append((record, score))
+                    if len(filtered) >= top_k:
+                        break
+
+        return filtered
+
     def retrieve_top_similar_ideas(self, query_vector: np.ndarray, top_k: int = 5) -> list[dict]:
         """Return metadata-enriched top matches from the stored vector index."""
         matches = self.search_index(query_vector, top_k=top_k)

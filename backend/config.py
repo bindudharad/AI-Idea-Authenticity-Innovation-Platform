@@ -14,7 +14,8 @@ class Settings(BaseSettings):
     app_env: str = "development"
     debug: bool = True
     api_prefix: str = "/api"
-    frontend_url: str = "http://localhost:3001"
+    frontend_url: str = "http://localhost:3000"
+    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001"
     database_url: str = "postgresql://postgres:postgres@localhost:5432/idea_platform"
     jwt_secret_key: str = "change-this-secret-in-production"
     jwt_algorithm: str = "HS256"
@@ -36,6 +37,21 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
+
+    def get_cors_origins(self) -> list[str]:
+        """Return parsed list of allowed CORS origins."""
+        origins = [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+        if self.frontend_url and self.frontend_url not in origins:
+            origins.append(self.frontend_url)
+        return origins
+
+    @field_validator("jwt_secret_key")
+    @classmethod
+    def validate_jwt_secret(cls, value: str, info) -> str:
+        app_env = info.data.get("app_env", "development")
+        if app_env == "production" and (not value or value == "change-this-secret-in-production"):
+            raise ValueError("Production environment requires setting a secure JWT_SECRET_KEY.")
+        return value
 
     @field_validator("faiss_index_path", "faiss_metadata_path", "certificate_output_dir", "dataset_path")
     @classmethod

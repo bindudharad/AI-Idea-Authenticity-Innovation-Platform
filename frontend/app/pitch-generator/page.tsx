@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import PitchGenerator from "@/pages/PitchGenerator";
 
 export default function PitchGeneratorPage() {
-  redirect("/dashboard");
+  return <PitchGenerator />;
 }

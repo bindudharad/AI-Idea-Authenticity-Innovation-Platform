@@ -28,28 +28,35 @@ class SimilarityService:
         self.engine = self.__class__._engine
 
     def search(self, query: str, records: list[dict], limit: int = 5, mode: str | None = None) -> list[SimilarityResult]:
-        """Return the top semantically related records, optionally filtered by platform mode."""
-        if not records:
+        """Return the top semantically related records using persistent FAISS vector search."""
+        if not query.strip():
             return []
 
-        filtered_records = [item for item in records if not mode or item.get("mode") == mode]
-        if not filtered_records:
-            filtered_records = records
+        # Ensure index is built and persisted once rather than re-encoding on every query
+        if records:
+            self.engine.ensure_indexed(records, self.embedding_model)
 
         query_vector = self.embedding_model.encode(query)
-        vectors = [self.embedding_model.encode(item["description"]) for item in filtered_records]
-        matches = self.engine.search(query_vector, vectors, top_k=limit)
+        matches = self.engine.search_with_filter(query_vector, top_k=limit, mode=mode)
+
+        # Fallback if engine had no matches or index was empty
+        if not matches and records:
+            filtered_records = [item for item in records if not mode or item.get("mode") == mode]
+            if not filtered_records:
+                filtered_records = records
+            vectors = [self.embedding_model.encode(item["description"]) for item in filtered_records]
+            raw_matches = self.engine.search(query_vector, vectors, top_k=limit)
+            matches = [(filtered_records[idx], score) for idx, score in raw_matches]
 
         results: list[SimilarityResult] = []
-        for index, score in matches:
-            record = filtered_records[index]
+        for record, score in matches:
             results.append(
                 SimilarityResult(
                     title=record["title"],
                     description=record["description"],
                     source=record["source"],
-                    mode=record["mode"],
-                    similarity_score=round(score * 100, 2),
+                    mode=record.get("mode", mode or "business"),
+                    similarity_score=round(float(score) * 100, 2),
                 )
             )
         return results

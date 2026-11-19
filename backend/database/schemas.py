@@ -128,7 +128,7 @@ class AnalysisResponse(BaseModel):
     resource_scan: dict[str, Any]
     innovation_breakdown: dict[str, float]
     suggestions: list[str]
-    judging_scores: dict[str, float]
+    judging_scores: dict[str, Any]
     startup_analysis: dict[str, Any]
     business_analysis: dict[str, Any] = Field(default_factory=dict)
     future_impact: dict[str, Any]
@@ -149,6 +149,7 @@ class IdeaRegistrationRequest(BaseModel):
     mode: str = Field(default="startup", pattern="^(startup|business|hackathon)$")
     idea_type: str | None = Field(default=None, pattern="^(startup|business|hackathon)$")
     is_public: bool = False
+    team_id: str | int | None = None
 
 
 class IdeaUpdateRequest(BaseModel):
@@ -176,9 +177,11 @@ class IdeaResponse(BaseModel):
     is_public: bool
     innovation_score: float
     latest_similarity_score: float
+    team_id: str | int | None = None
     created_at: datetime
     updated_at: datetime
     versions: list[IdeaVersionResponse] = Field(default_factory=list)
+    result: dict[str, Any] | None = None
 
 
 class PublicIdeaResponse(BaseModel):
@@ -222,3 +225,89 @@ class HelpChatRequest(BaseModel):
 class HelpChatResponse(BaseModel):
     answer: str
     suggested_pages: list[str] = Field(default_factory=list)
+
+
+class TeamCreate(BaseModel):
+    name: str = Field(..., min_length=2, max_length=255)
+
+
+class TeamJoin(BaseModel):
+    code: str = Field(..., min_length=4, max_length=32)
+
+
+class TeamShareIdea(BaseModel):
+    ideaId: int | str
+
+
+class TeamMemberResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    user_id: str
+    full_name: str
+    email: str
+    role: str
+    created_at: str | datetime
+
+
+class TeamSummaryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    code: str
+    leader_id: str
+    role: str = "member"
+    created_at: str | datetime
+    member_count: int = 1
+    members: list[TeamMemberResponse] = Field(default_factory=list)
+    ideas: list[IdeaResponse] = Field(default_factory=list)
+
+
+class TeamActionResponse(BaseModel):
+    success: bool
+    team: TeamSummaryResponse
+
+
+class TeamMessageCreate(BaseModel):
+    content: str = Field(..., min_length=1)
+
+
+class TeamMessageResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    content: str
+    user_id: str
+    full_name: str
+    created_at: str | datetime
+
+
+class NotificationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    text: str
+    type: str = "info"
+    read: bool = False
+    team_id: str | None = None
+    idea_id: int | None = None
+    created_at: str | datetime
+
+
+class NotificationUpdate(BaseModel):
+    read: bool = True
+
+
+class ActivityLogResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    user_id: str
+    full_name: str
+    action: str
+    detail: str
+    created_at: str | datetime
+    team_id: str | None = None
+    idea_id: int | None = None
+

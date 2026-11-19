@@ -1,5 +1,18 @@
-const API_ROOT_URL = (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
-const API_BASE_URL = `${API_ROOT_URL}/api`;
+function resolveApiUrls() {
+  const rawUrl = (
+    process.env.NEXT_PUBLIC_API_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://127.0.0.1:8000"
+  )
+    .trim()
+    .replace(/\/+$/, "");
+
+  const root = rawUrl.endsWith("/api") ? rawUrl.slice(0, -4) : rawUrl;
+  const base = `${root}/api`;
+  return { root, base };
+}
+
+const { root: API_ROOT_URL, base: API_BASE_URL } = resolveApiUrls();
 
 // Fallback mock data for when API is unavailable
 const MOCK_DELAY = 500;

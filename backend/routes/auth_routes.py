@@ -7,11 +7,11 @@ from database.schemas import TokenResponse, UserCreate, UserResponse
 from services.idea_service import IdeaService
 from utils.security import create_access_token, get_current_user, verify_password
 
-
 router = APIRouter(tags=["Authentication"])
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/auth/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def register_user(payload: UserCreate, db: Session = Depends(get_db)) -> UserResponse:
     """Create an application user with a hashed password."""
     service = IdeaService(db)
@@ -20,6 +20,7 @@ def register_user(payload: UserCreate, db: Session = Depends(get_db)) -> UserRes
 
 
 @router.post("/login", response_model=TokenResponse)
+@router.post("/auth/login", response_model=TokenResponse)
 def login_user(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)) -> TokenResponse:
     """Issue a JWT for a valid username/email and password combination."""
     service = IdeaService(db)
@@ -27,11 +28,19 @@ def login_user(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = D
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
-    token = create_access_token({"sub": str(user.id), "email": user.email})
+    token = create_access_token({"sub": str(user.id), "userId": str(user.id), "email": user.email})
     return TokenResponse(access_token=token, token_type="bearer")
 
 
 @router.get("/user/me", response_model=UserResponse)
+@router.get("/auth/me", response_model=UserResponse)
 def get_authenticated_user(current_user=Depends(get_current_user)) -> UserResponse:
     """Return the authenticated user's profile so the frontend can hydrate session state."""
     return UserResponse.model_validate(current_user)
+
+
+@router.post("/logout")
+@router.post("/auth/logout")
+def logout_user(_current_user=Depends(get_current_user)) -> dict[str, str]:
+    """Client-side token disposal endpoint."""
+    return {"message": "Logged out successfully"}
